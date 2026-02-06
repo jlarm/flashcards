@@ -4,6 +4,7 @@ import { useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import { useDecksStore } from '@/stores/decks'
 import { supabase } from '@/lib/supabase'
+import Sparkline from '@/components/ui/Sparkline.vue'
 import Button from '@/components/ui/Button.vue'
 import Input from '@/components/ui/Input.vue'
 import Textarea from '@/components/ui/Textarea.vue'
@@ -21,6 +22,7 @@ const title = ref('')
 const description = ref('')
 const visibility = ref('private')
 const lastScores = ref({})
+const deckTrends = ref({})
 
 const userInitials = computed(() => {
   const email = authStore.user?.email ?? ''
@@ -30,11 +32,21 @@ const userInitials = computed(() => {
 onMounted(() => {
   if (authStore.user?.id) {
     decksStore.fetchDecks(authStore.user.id)
-    loadLastScores()
+    loadDeckTrends()
   }
 })
 
-async function loadLastScores() {
+function scoreFromRow(row) {
+  if (row.correct_percent !== null && row.correct_percent !== undefined) return row.correct_percent
+  if (row.accuracy_percent !== null && row.accuracy_percent !== undefined)
+    return row.accuracy_percent
+  if (row.review_count) {
+    return Math.round((row.correct_count / row.review_count) * 100)
+  }
+  return 0
+}
+
+async function loadDeckTrends() {
   if (!authStore.user?.id) return
   const { data } = await supabase
     .from('study_sessions')
@@ -42,21 +54,31 @@ async function loadLastScores() {
     .eq('user_id', authStore.user.id)
     .not('ended_at', 'is', null)
     .order('ended_at', { ascending: false })
-  const map = {}
+    .limit(300)
+
+  const trendMap = {}
+  const latestMap = {}
   for (const row of data ?? []) {
-    if (map[row.deck_id] === undefined) {
-      if (row.correct_percent !== null && row.correct_percent !== undefined) {
-        map[row.deck_id] = row.correct_percent
-      } else if (row.accuracy_percent !== null && row.accuracy_percent !== undefined) {
-        map[row.deck_id] = row.accuracy_percent
-      } else if (row.review_count) {
-        map[row.deck_id] = Math.round((row.correct_count / row.review_count) * 100)
-      } else {
-        map[row.deck_id] = null
-      }
+    const score = scoreFromRow(row)
+    if (!trendMap[row.deck_id]) trendMap[row.deck_id] = []
+    if (trendMap[row.deck_id].length < 20) {
+      trendMap[row.deck_id].push({
+        value: score,
+        label: new Date(row.ended_at).toLocaleDateString(),
+      })
+    }
+    if (latestMap[row.deck_id] === undefined) {
+      latestMap[row.deck_id] = score
     }
   }
-  lastScores.value = map
+
+  const normalizedTrends = {}
+  for (const [deckId, points] of Object.entries(trendMap)) {
+    normalizedTrends[deckId] = points.slice().reverse()
+  }
+
+  deckTrends.value = normalizedTrends
+  lastScores.value = latestMap
 }
 
 async function createDeck() {
@@ -113,22 +135,35 @@ async function logout() {
       </div>
       <div v-if="decksStore.isLoading" class="text-sm text-foreground/70">Loading decks...</div>
       <div v-else class="grid gap-6 md:grid-cols-2">
-        <Card v-for="deck in decksStore.decks" :key="deck.id" class="flex flex-col gap-4">
-          <div class="flex items-start justify-between">
-            <div>
-              <h3 class="text-lg font-display font-semibold">{{ deck.title }}</h3>
-              <p v-if="deck.description" class="mt-2 text-sm text-foreground/70">
-                {{ deck.description }}
-              </p>
-            </div>
+        <Card v-for="deck in decksStore.decks" :key="deck.id" class="flex flex-col gap-6">
+          <div class="flex items-center justify-between">
+            <h3 class="text-lg font-display font-semibold">{{ deck.title }}</h3>
             <Badge>{{ deck.visibility }}</Badge>
           </div>
-            <div class="flex items-center justify-between">
-              <span class="text-xs uppercase tracking-[0.2em] text-foreground/60">
-                Updated {{ new Date(deck.updated_at).toLocaleDateString() }}
+          <p v-if="deck.description" class="text-sm text-foreground/70">
+            {{ deck.description }}
+          </p>
+          <div class="flex items-center justify-between gap-6">
+            <div class="w-full max-w-xs text-left">
+              <Sparkline :points="deckTrends[deck.id] || []" class="text-[#2563eb]" />
+            </div>
+            <div class="text-sm text-foreground/60 text-right">
+              Last score:
+              <span class="font-semibold text-foreground">
+                {{ lastScores[deck.id] === null || lastScores[deck.id] === undefined ? '—' : `${lastScores[deck.id]}%` }}
               </span>
-              <div class="flex flex-wrap gap-2">
-              <Button size="sm" variant="secondary" @click="router.push({ name: 'deck', params: { id: deck.id } })">
+            </div>
+          </div>
+          <div class="flex items-center justify-between">
+            <span class="text-xs uppercase tracking-[0.2em] text-foreground/60">
+              Updated {{ new Date(deck.updated_at).toLocaleDateString() }}
+            </span>
+            <div class="flex flex-wrap gap-2">
+              <Button
+                size="sm"
+                variant="secondary"
+                @click="router.push({ name: 'deck', params: { id: deck.id } })"
+              >
                 Edit
               </Button>
               <Button
@@ -138,12 +173,6 @@ async function logout() {
               >
                 Start
               </Button>
-            </div>
-            <div class="text-xs text-foreground/60">
-              Last score:
-              <span class="font-semibold text-foreground">
-                {{ lastScores[deck.id] === null || lastScores[deck.id] === undefined ? '—' : `${lastScores[deck.id]}%` }}
-              </span>
             </div>
           </div>
         </Card>
