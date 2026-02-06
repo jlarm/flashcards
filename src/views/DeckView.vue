@@ -26,6 +26,7 @@ const deckError = ref('')
 const isLoadingDeck = ref(false)
 const isSavingDeck = ref(false)
 const sessionScores = ref([])
+const weakCards = ref([])
 
 const deckTitle = ref('')
 const deckDescription = ref('')
@@ -86,16 +87,50 @@ async function loadSessionHistory() {
   })
 }
 
+async function loadWeakCards() {
+  if (!deckId.value || !authStore.user?.id) return
+  const { data } = await supabase
+    .from('review_logs')
+    .select('card_id,rating,cards ( front, back )')
+    .eq('deck_id', deckId.value)
+    .eq('user_id', authStore.user.id)
+    .order('reviewed_at', { ascending: false })
+    .limit(500)
+
+  const map = new Map()
+  for (const row of data ?? []) {
+    if (row.rating === null || row.rating === undefined) continue
+    const key = row.card_id
+    const entry = map.get(key) ?? {
+      id: row.card_id,
+      front: row.cards?.front ?? '',
+      back: row.cards?.back ?? '',
+      wrong: 0,
+      total: 0,
+    }
+    entry.total += 1
+    if (row.rating < 2) entry.wrong += 1
+    map.set(key, entry)
+  }
+
+  weakCards.value = Array.from(map.values())
+    .filter((item) => item.total > 0)
+    .sort((a, b) => b.wrong - a.wrong)
+    .slice(0, 10)
+}
+
 onMounted(async () => {
   await loadDeck()
   await loadCards()
   await loadSessionHistory()
+  await loadWeakCards()
 })
 
 watch(deckId, async () => {
   await loadDeck()
   await loadCards()
   await loadSessionHistory()
+  await loadWeakCards()
 })
 
 async function addCard() {
@@ -307,6 +342,33 @@ async function saveDeckDetails() {
           </p>
           <div class="mt-4">
             <LineChart :values="sessionScores" />
+          </div>
+        </Card>
+
+        <Card>
+          <h2 class="text-lg font-display font-semibold">Most missed cards</h2>
+          <p class="mt-2 text-sm text-foreground/70">
+            Based on your recent answers (wrong to least wrong).
+          </p>
+          <div class="mt-4 space-y-3 text-sm">
+            <div
+              v-for="card in weakCards"
+              :key="card.id"
+              class="rounded-xl border border-border bg-background/70 px-3 py-2"
+            >
+              <div class="flex items-start justify-between gap-3">
+                <div class="min-w-0">
+                  <p class="truncate font-medium">{{ card.front }}</p>
+                  <p class="truncate text-xs text-foreground/60">{{ card.back }}</p>
+                </div>
+                <span class="text-xs text-foreground/60">
+                  {{ card.wrong }} / {{ card.total }} wrong
+                </span>
+              </div>
+            </div>
+            <p v-if="!weakCards.length" class="text-sm text-foreground/60">
+              No misses recorded yet.
+            </p>
           </div>
         </Card>
 
