@@ -4,7 +4,6 @@ import { useAuthStore } from '@/stores/auth'
 import Button from '@/components/ui/Button.vue'
 import Input from '@/components/ui/Input.vue'
 import Card from '@/components/ui/Card.vue'
-import Badge from '@/components/ui/Badge.vue'
 
 const authStore = useAuthStore()
 const email = ref('')
@@ -21,7 +20,9 @@ async function handleSubmit() {
   <div class="mx-auto flex min-h-screen max-w-6xl flex-col px-6 pb-16 pt-10">
     <header class="flex items-center justify-between">
       <div class="flex items-center gap-3">
-        <div class="h-10 w-10 rounded-2xl bg-foreground text-background grid place-items-center font-display">
+        <div
+          class="h-10 w-10 rounded-2xl bg-foreground text-background grid place-items-center font-display"
+        >
           FX
         </div>
         <div>
@@ -29,7 +30,6 @@ async function handleSubmit() {
           <p class="text-lg font-display font-semibold">Focus faster. Remember longer.</p>
         </div>
       </div>
-      <Badge variant="accent">Supabase Ready</Badge>
     </header>
 
     <main class="mt-12 grid gap-10 lg:grid-cols-[1.1fr_0.9fr]">
@@ -38,8 +38,8 @@ async function handleSubmit() {
           A clean, collaborative flashcard workspace powered by Supabase.
         </h1>
         <p class="text-lg text-foreground/70">
-          Create decks, track progress, import CSV batches, and keep your study rhythm tight with
-          a focused workflow.
+          Create decks, track progress, import CSV batches, and keep your study rhythm tight with a
+          focused workflow.
         </p>
         <div class="grid gap-4 md:grid-cols-2">
           <Card>
